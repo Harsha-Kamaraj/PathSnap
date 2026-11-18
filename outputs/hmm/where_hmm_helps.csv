@@ -1,0 +1,10 @@
+outcome,error kind,CV (train OOF),student_test
+broken by HMM,other road (parallel / nearby),221,34
+broken by HMM,reverse direction (two-way street),984,107
+broken by HMM,touching arc (shares a node),916,103
+fixed by HMM,other road (parallel / nearby),1855,245
+fixed by HMM,reverse direction (two-way street),6846,661
+fixed by HMM,touching arc (shares a node),2704,355
+wrong both ways,other road (parallel / nearby),637,21
+wrong both ways,reverse direction (two-way street),111,19
+wrong both ways,touching arc (shares a node),987,126

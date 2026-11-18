@@ -1,0 +1,13 @@
+classifier,variant,train OOF Top-1,vs best (pp)
+LightGBM_tuned,best decoder,0.9405163292270412,0.0
+LightGBM_tuned,no U-turn penalty,0.9008020701413902,-3.971425908565096
+LightGBM_tuned,no stop handling,0.9334440771259245,-0.7072252101116727
+LightGBM_tuned,no speed penalty,0.9402476932945182,-0.02686359325230203
+LightGBM_tuned,Gaussian distance term removed,0.9404669879333125,-0.004934129372868856
+LightGBM_tuned,classifier only (no HMM),0.891624589507848,-4.889173971919325
+RandomForest_tuned,best decoder,0.9418211323278675,0.0
+RandomForest_tuned,no U-turn penalty,0.902084943778337,-3.9736188549530427
+RandomForest_tuned,no stop handling,0.9347817744225698,-0.7039357905297638
+RandomForest_tuned,no speed penalty,0.9406204941804686,-0.12006381473989025
+RandomForest_tuned,Gaussian distance term removed,0.9415634611272841,-0.02576712005833981
+RandomForest_tuned,classifier only (no HMM),0.8907528933186406,-5.106823900922686

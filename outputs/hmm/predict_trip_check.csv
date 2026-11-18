@@ -1,0 +1,3 @@
+trip_id,fixes,same_as_notebook,path_pieces,clean_features_s,classifier_s,hmm_build_s,viterbi_s,total_s
+00000077,3911,1.0,1,0.59,0.13,0.29,0.05,1.07
+00000052,262,1.0,1,0.18,0.09,0.03,0.0,0.3

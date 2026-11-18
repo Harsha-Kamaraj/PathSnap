@@ -1,0 +1,39 @@
+{
+ "classifier": "RandomForest_tuned",
+ "classifier_file": "models/RandomForest_tuned.joblib",
+ "decoder_params": {
+  "beta_m": 3.740802119164323,
+  "no_path_pen": 43.44637981618004,
+  "uturn_pen": 17.239626086198143,
+  "stop_pen": 11.321651658631374,
+  "speed_pen": 5.729636264741511,
+  "p_floor": 2.2740366867919638e-05,
+  "use_dist": true,
+  "sigma_m": 32.84125088999664
+ },
+ "constants": {
+  "MIN_DETOUR_M": 200.0,
+  "V_MAX_MPS": 50.0
+ },
+ "candidates": {
+  "radius_m": 50.0,
+  "max_candidates": 16
+ },
+ "selected_by": "highest mean nested-CV Top-1 (all labelled fixes) of classifier + HMM, train out-of-fold probabilities",
+ "cv_top1_hmm": {
+  "LightGBM_tuned": 0.9359,
+  "RandomForest_tuned": 0.9423
+ },
+ "decoder_params_other_classifier": {
+  "LightGBM_tuned": {
+   "beta_m": 2.580118980530323,
+   "no_path_pen": 46.63950257909013,
+   "uturn_pen": 19.70214214658657,
+   "stop_pen": 19.167726711199727,
+   "speed_pen": 9.189934785726045,
+   "p_floor": 0.0007683860731212164,
+   "use_dist": true,
+   "sigma_m": 28.44646799538477
+  }
+ }
+}

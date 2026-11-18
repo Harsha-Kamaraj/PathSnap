@@ -17,12 +17,15 @@ src/pathsnap/        reusable code
   features.py        candidate features
   training.py        model registry, CV, metrics
   tuning.py          LightGBM + Random Forest search spaces, Optuna objective
+  hmm.py             HMM + Viterbi route reconstruction, predict_trip() for the API
+  maps.py            Folium map of one trip (GPS, network, reference, predictions)
 scripts/run_eda.py   dataset exploration: tables, figures, Folium maps, report
 scripts/run_cleaning.py  cleans every trip into data/processed/
 notebooks/03_features.ipynb  labels, candidates and features -> data/features/
 notebooks/04_model_training.ipynb  5 models, CV + student_test comparison -> outputs/models/, models/
 notebooks/05_bayesian_tuning.ipynb  Optuna TPE tuning of LightGBM -> outputs/tuning/, models/LightGBM_tuned.joblib
 notebooks/06_bayesian_tuning_rf.ipynb  Optuna TPE tuning of Random Forest -> outputs/tuning_rf/, models/RandomForest_tuned.joblib
+notebooks/07_hmm_viterbi.ipynb  HMM/Viterbi decoding, classifier vs HMM, Folium maps -> outputs/hmm/, models/hmm_config.json
 outputs/eda/         generated EDA outputs (committed as evidence)
 outputs/cleaning/    cleaning summary + report (committed as evidence)
 data/processed/      cleaned trips (git-ignored, regenerate with run_cleaning.py)
@@ -148,6 +151,7 @@ tuned too because it was the most accurate untuned model, only a few tenths of a
   `best_params.json`, `search_space.json`, `rf_lgbm_tuned_vs_untuned.csv`, `per_fold_top1.csv`, `study.db`, `figures/`.
 * Model: `models/RandomForest_tuned.joblib`. The untuned `models/RandomForest.joblib` is unchanged.
 
+<<<<<<< Updated upstream
 
 ## Evaluator UI (Streamlit, laptop 2)
 
@@ -199,3 +203,34 @@ console with step timings and scores (the "API logs" the evaluators ask to see).
 * **Decoder:** classifier-only for now. When the HMM/Viterbi step is ready, call it in
   `inference.decode()` and set `DECODER_NAME`. The API and UI need no other change.
 * **macOS:** LightGBM needs OpenMP: `brew install libomp`.
+=======
+## HMM + Viterbi route reconstruction (notebook 07)
+
+Run `notebooks/07_hmm_viterbi.ipynb` after notebooks 05 and 06 (about 40 min on CPU, most of it nested CV). It decodes each trip with an HMM
+whose hidden states are the candidate arcs of each GPS fix:
+
+* **Emission:** log of the tuned classifier's probability (with a floor), optionally plus a Gaussian distance term.
+* **Transition:** driving distance along directed arcs (distance-bounded Dijkstra, cached per trip) compared with the
+  straight-line GPS distance, plus penalties for U-turns, arc changes during stops and impossible speeds. "No path" gets a
+  large finite cost, so decoding never breaks.
+* **Chains** restart at GPS gaps > 120 s; fixes with no candidate within 50 m are carried over and flagged.
+* Decoder parameters are tuned with Optuna TPE on **train out-of-fold probabilities only**, inside nested CV for the
+  reported CV numbers. student_test is decoded once at the end.
+
+Code: [`src/pathsnap/hmm.py`](src/pathsnap/hmm.py) (the recurrence is written out in its docstring) and
+[`src/pathsnap/maps.py`](src/pathsnap/maps.py). Results: [`outputs/hmm/HMM_REPORT.md`](outputs/hmm/HMM_REPORT.md), which answers the
+report questions, plus CSVs, `figures/` and Folium maps in `outputs/hmm/maps/`. The final classifier and decoder parameters
+are in `models/hmm_config.json`.
+
+For the API, one trip is processed from its raw files (only `.track`, `.nodes`, `.arcs`; the `.route` file is never read):
+
+```python
+import json, joblib
+from pathsnap import hmm
+cfg = json.load(open("models/hmm_config.json"))
+model = joblib.load(cfg["classifier_file"])
+out = hmm.predict_trip("student_test", "00000000", model, cfg["decoder_params"])
+out["fixes"]   # per fix: lon, lat, t, pred_arc_classifier, pred_arc_hmm, carried_over
+out["path"]    # connected pieces of arcs with [lon, lat] coordinates, for the map
+```
+>>>>>>> Stashed changes
