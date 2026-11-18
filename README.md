@@ -27,6 +27,10 @@ outputs/eda/         generated EDA outputs (committed as evidence)
 outputs/cleaning/    cleaning summary + report (committed as evidence)
 data/processed/      cleaned trips (git-ignored, regenerate with run_cleaning.py)
 docs/DATA_QUALITY_NOTES.md   interpretation, assumptions and decisions
+docs/API_CONTRACT.md request/response format between the API (laptop 1) and the UI (laptop 2)
+ui/app.py            Streamlit evaluator UI (laptop 2)
+ui/mock_api.py       mock API that follows the contract, for testing the UI
+ui/requirements.txt  packages needed on laptop 2 (UI only)
 ```
 
 ## Setup
@@ -142,3 +146,29 @@ tuned too because it was the most accurate untuned model, only a few tenths of a
   `best_params.json`, `search_space.json`, `rf_lgbm_tuned_vs_untuned.csv`, `per_fold_top1.csv`, `study.db`, `figures/`.
 * Model: `models/RandomForest_tuned.joblib`. The untuned `models/RandomForest.joblib` is unchanged.
 
+
+## Evaluator UI (Streamlit, laptop 2)
+
+The UI talks to the API **only over HTTP**. It never loads the model, the data or any ground truth.
+The request and response format is fixed in [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md)
+(`GET /health`, `GET /trips`, `POST /predict`).
+
+```bash
+# laptop 2: only the UI packages are needed
+python3 -m venv .venv && .venv/bin/python -m pip install -r ui/requirements.txt
+PATHSNAP_API_URL=http://<laptop-1-ip>:8000 .venv/bin/streamlit run ui/app.py
+```
+
+You can also type the API address in the sidebar. The page shows a connection light, the list of
+trips (click a row), a **Run prediction** button, the metrics computed by the API (Top-1, classifier-only
+Top-1, route continuity) and a Folium map of the raw GPS points and the predicted route, with a legend
+and layer control. The reference route is never sent to the UI.
+
+**Testing without the real API:** `ui/mock_api.py` follows the same contract, using the 10
+student_test trips and a nearest-road baseline (no model). The UI shows a "MOCK API" banner while
+it is connected.
+
+```bash
+.venv/bin/python -m uvicorn ui.mock_api:app --host 0.0.0.0 --port 8000   # needs data/processed
+.venv/bin/streamlit run ui/app.py
+```
