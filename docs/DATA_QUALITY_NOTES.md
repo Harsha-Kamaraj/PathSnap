@@ -122,3 +122,12 @@ This is the interpretation of the dataset exploration. All numbers come from
 3. Some fixes cannot be matched reliably (off-network, parked, long gaps).
    → the pipeline needs gap segmentation and stop handling, and evaluation must
    account for imperfect labels.
+
+## 8. Cleaning applied
+
+The decisions above are implemented in `src/pathsnap/cleaning.py` (run with
+`scripts/run_cleaning.py`, results in `outputs/cleaning/CLEANING_REPORT.md`).
+One change from the EDA plan: most "impossible speed" steps turned out to stay
+on the road (2–10 m from an arc) and keep moving forward, so they are not
+position spikes. They are flagged (`is_fast_step`), and the positions are kept.
+Only out-and-back spikes (`is_spike`) would be ignored, and none were found.
