@@ -31,6 +31,23 @@ ROUTE_COLOR = "#d62728"
 
 st.set_page_config(page_title="PathSnap", page_icon="🗺️", layout="wide")
 
+st.markdown("""
+<style>
+  .block-container {padding-top: 1.6rem; padding-bottom: 1rem;}
+  .ps-hero {background: linear-gradient(135deg, #1d2a4a 0%, #2a1730 100%); border: 1px solid #2c3754;
+            border-radius: 16px; padding: 18px 24px; margin-bottom: 18px;}
+  .ps-hero h1 {margin: 0; font-size: 1.9rem; letter-spacing: .2px;}
+  .ps-hero p {margin: 4px 0 10px; color: #b9c2d6;}
+  .ps-badge {display: inline-block; padding: 3px 10px; margin-right: 6px; border-radius: 999px;
+             font-size: .8rem; background: #0f1420; border: 1px solid #3a4769; color: #dfe5f2;}
+  .ps-badge b {color: #ff7a7a;}
+  div[data-testid="stMetric"] {background: #182033; border: 1px solid #2c3754; border-radius: 14px;
+                               padding: 14px 16px;}
+  div[data-testid="stMetricValue"] {font-size: 2rem;}
+  iframe {border-radius: 14px;}
+</style>
+""", unsafe_allow_html=True)
+
 
 # ----------------------------------------------------------------------------
 # API calls (every request goes to laptop 1; nothing is computed here)
@@ -135,8 +152,13 @@ with st.sidebar:
 # ----------------------------------------------------------------------------
 # Main page
 # ----------------------------------------------------------------------------
-st.title("🗺️ PathSnap: GPS map-matching")
-st.caption("Pick a trip, send it to the API, and see the route the model reconstructs from noisy GPS.")
+st.markdown(
+    f"""<div class="ps-hero"><h1>🗺️ PathSnap</h1>
+    <p>Distributed map-matching: noisy GPS in, the road route the vehicle really drove out.</p>
+    <span class="ps-badge">Classifier <b>{health.get('classifier', '–') if health else '–'}</b></span>
+    <span class="ps-badge">Decoder <b>{health.get('decoder', '–') if health else '–'}</b></span>
+    <span class="ps-badge">API <b>{'online' if health else 'offline'}</b></span></div>""",
+    unsafe_allow_html=True)
 
 if health is None:
     st.info("Waiting for the API. Start it on laptop 1, then press **Reconnect** in the sidebar.")
@@ -156,7 +178,7 @@ if "trips" not in st.session_state:
         st.stop()
 trips = st.session_state["trips"]
 
-left, right = st.columns([1, 2.6], gap="large")
+left, right = st.columns([1, 3.2], gap="large")
 
 with left:
     st.subheader(f"Trips ({len(trips)})")
@@ -166,6 +188,9 @@ with left:
         "Duration": [fmt_duration(t.get("duration_s")) for t in trips],
     })
     event = st.dataframe(table, hide_index=True, on_select="rerun", selection_mode="single-row",
+                         column_config={"Trip": st.column_config.TextColumn(width="small"),
+                                        "GPS points": st.column_config.NumberColumn(width="small", format="%d"),
+                                        "Duration": st.column_config.TextColumn(width="small")},
                          key="trip_table", width="stretch")
     rows = event.selection.rows
     chosen = trips[rows[0]]["trip_id"] if rows else None
@@ -197,12 +222,12 @@ with right:
         top1, base = met.get("top1_accuracy"), met.get("top1_accuracy_classifier_only")
         c1.metric("Top-1 accuracy", fmt_pct(top1),
                   delta=None if top1 is None or base is None else f"{(top1 - base) * 100:+.1f} pp vs classifier only",
-                  help="Share of scored GPS points matched to the correct road segment (computed by the API).")
-        c2.metric("Classifier only", fmt_pct(base), help="Top-1 accuracy before HMM/Viterbi decoding.")
+                  help="Share of scored GPS points matched to the correct road segment (computed by the API).", border=True)
+        c2.metric("Classifier only", fmt_pct(base), help="Top-1 accuracy before HMM/Viterbi decoding.", border=True)
         c3.metric("Route continuity", fmt_pct(met.get("route_continuity")),
-                  help="Share of consecutive points whose predicted segments are the same or connected.")
+                  help="Share of consecutive points whose predicted segments are the same or connected.", border=True)
         c4.metric("GPS points", f"{res['n_points']:,}",
-                  help=f"{met.get('n_scored_points', '–')} of them have a reference label and are scored.")
+                  help=f"{met.get('n_scored_points', '–')} of them have a reference label and are scored.", border=True)
         st.caption(f"Model: **{res.get('classifier', '–')}** + **{res.get('decoder', '–')}** · "
                    f"API time {res.get('timing_ms', {}).get('total', 0):,.0f} ms · "
                    f"round trip {res['_roundtrip_ms']:,.0f} ms")
