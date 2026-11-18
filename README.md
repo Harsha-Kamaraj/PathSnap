@@ -12,9 +12,14 @@ src/pathsnap/        reusable code
   geo.py             per-trip UTM projection and haversine
   eda_metrics.py     per-trip exploratory statistics and anomaly flags
   cleaning.py        per-trip cleaning: metres, segments, stops, quality flags
+  labels.py          per-fix reference arc (route alignment)
+  candidates.py      candidate arcs per fix
+  features.py        candidate features
+  training.py        model registry, CV, metrics
 scripts/run_eda.py   dataset exploration: tables, figures, Folium maps, report
 scripts/run_cleaning.py  cleans every trip into data/processed/
-notebooks/03_features.ipynb  candidates, labels and features -> data/features/
+notebooks/03_features.ipynb  labels, candidates and features -> data/features/
+notebooks/04_model_training.ipynb  5 models, CV + student_test comparison -> outputs/models/, models/
 outputs/eda/         generated EDA outputs (committed as evidence)
 outputs/cleaning/    cleaning summary + report (committed as evidence)
 data/processed/      cleaned trips (git-ignored, regenerate with run_cleaning.py)
@@ -69,20 +74,29 @@ their reference route).
 * [`outputs/cleaning/cleaning_summary.csv`](outputs/cleaning/cleaning_summary.csv): one row per trip
 * Load a cleaned trip: `from pathsnap.cleaning import load_clean_trip`
 
-## Candidates, labels and features (steps 2 + 3)
+## Labels, candidates and features (notebook 03)
 
-Run `notebooks/03_features.ipynb` (kernel "PathSnap (.venv)"; needs `data/processed` from `run_cleaning.py`; ~30 s).
+Run `notebooks/03_features.ipynb` (kernel "PathSnap (.venv)"; needs `data/processed` from `run_cleaning.py`; about 2 min).
 
 ```bash
 .venv/Scripts/python -m ipykernel install --user --name pathsnap --display-name "PathSnap (.venv)"   # once
-.venv/Scripts/python -m jupyter lab notebooks/03_features.ipynb
+.venv/Scripts/python -m jupyter lab notebooks/
 ```
 
-The functions live in `src/pathsnap/features.py`, so the API can reuse them at inference time. The notebook runs them and explains each stage.
-For each fix, the candidates are the canonical arcs within 100 m (at most 16 nearest).
-Each fix gets its reference arc from a monotone alignment of the fixes to the `.route` sequence, which handles
-U-turns and revisited arcs. Every (fix, candidate) row has 26 label-free features (`FEATURE_COLS`).
+* `src/pathsnap/labels.py`: per-fix reference arc from an order-respecting DP alignment of the fixes to `.route`
+  (handles U-turns and revisits). Training and scoring only.
+* `src/pathsnap/candidates.py`: arcs within 50 m, at most 16 per fix. This was chosen by a train-only miss-rate sweep
+  (`outputs/features/candidate_sweep.csv`). Train miss rate 0.11 %.
+* `src/pathsnap/features.py`: 27 label-free features per (fix, candidate) row (`FEATURE_COLS`).
+* Outputs: `data/features/*.parquet` (git-ignored) and [`outputs/features/FEATURES_REPORT.md`](outputs/features/FEATURES_REPORT.md).
 
-* `data/features/<partition>.parquet`: one row per (fix, candidate). Train on `label_reliable & ~exclude_trip`, group by `trip_id`.
-* `data/features/<partition>_fixes.parquet`: one row per fix (for Top-1 / miss-rate scoring).
-* [`outputs/features/FEATURES_REPORT.md`](outputs/features/FEATURES_REPORT.md): candidate miss rate (train 0.10%, student_test 0.03%), baselines and figures.
+## Model training and comparison (notebook 04)
+
+Run `notebooks/04_model_training.ipynb` after notebook 03 (about 25 min on CPU). It trains Logistic Regression, KNN,
+Random Forest, LightGBM and an MLP with 5-fold GroupKFold on `trip_id`, refits each on all usable train trips and scores
+it once on student_test. Code: `src/pathsnap/training.py`.
+
+* [`outputs/models/MODEL_COMPARISON.md`](outputs/models/MODEL_COMPARISON.md): results tables and figures
+* `outputs/models/`: `model_comparison.csv`, `per_fold.csv`, `configs.json` (all settings and the seed), `experiment_log.jsonl`,
+  `mlp_history.csv`, `confusion_matrices.json`, `figures/`
+* `models/*.joblib`: fitted models. Files over 50 MB are git-ignored, so regenerate them with the notebook.

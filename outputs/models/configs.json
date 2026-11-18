@@ -1,0 +1,126 @@
+{
+ "seed": 42,
+ "n_folds": 5,
+ "cv": "GroupKFold(shuffle=True) on trip_id, 80 train trips",
+ "training_rows": "label_reliable & ~exclude_trip",
+ "features": [
+  "dist_m",
+  "dist_rank",
+  "dist_minus_min",
+  "dist_ratio",
+  "n_cands",
+  "is_fallback",
+  "proj_t",
+  "off_end_m",
+  "arc_length_m",
+  "heading_diff_deg",
+  "heading_cos",
+  "heading_disp_m",
+  "d_prev_m",
+  "d_next_m",
+  "d_win_mean_m",
+  "d_win_max_m",
+  "win_mean_rank",
+  "win_mean_minus_min",
+  "speed_med_mps",
+  "dt_prev_s",
+  "is_stop",
+  "is_fast_step",
+  "is_off_network",
+  "is_two_way",
+  "from_in_deg",
+  "to_out_deg",
+  "in_largest_scc"
+ ],
+ "log1p_columns": [
+  "dist_m",
+  "dist_minus_min",
+  "dist_ratio",
+  "off_end_m",
+  "arc_length_m",
+  "heading_disp_m",
+  "d_prev_m",
+  "d_next_m",
+  "d_win_mean_m",
+  "d_win_max_m",
+  "win_mean_minus_min",
+  "speed_med_mps",
+  "dt_prev_s"
+ ],
+ "candidates": {
+  "CAND_RADIUS_M": 50.0,
+  "MAX_CANDS": 16,
+  "rule": "smallest mean candidate set with train miss rate within 0.1 pp of the grid best",
+  "train_miss_rate_pct": 0.1111,
+  "cands_per_fix": 7.905
+ },
+ "models": {
+  "LogisticRegression": {
+   "family": "Linear",
+   "params": {
+    "C": 1.0,
+    "solver": "lbfgs",
+    "max_iter": 1000
+   },
+   "preprocessing": "log1p + StandardScaler",
+   "train_sample_rows": null
+  },
+  "KNN": {
+   "family": "Instance-based",
+   "params": {
+    "n_neighbors": 50,
+    "weights": "uniform",
+    "algorithm": "auto"
+   },
+   "preprocessing": "log1p + StandardScaler; trained on a random 150,000-row sample",
+   "train_sample_rows": 150000
+  },
+  "RandomForest": {
+   "family": "Ensemble (bagging)",
+   "params": {
+    "n_estimators": 150,
+    "max_features": "sqrt",
+    "min_samples_leaf": 20,
+    "max_samples": 0.3,
+    "bootstrap": true,
+    "n_jobs": -1
+   },
+   "preprocessing": "raw features (trees do not need scaling)",
+   "train_sample_rows": null
+  },
+  "LightGBM": {
+   "family": "Boosting",
+   "params": {
+    "n_estimators": 400,
+    "learning_rate": 0.05,
+    "num_leaves": 63,
+    "min_child_samples": 50,
+    "subsample": 0.8,
+    "subsample_freq": 1,
+    "colsample_bytree": 0.8,
+    "reg_lambda": 1.0,
+    "verbose": -1
+   },
+   "preprocessing": "raw features",
+   "train_sample_rows": null
+  },
+  "MLP": {
+   "family": "Neural network",
+   "params": {
+    "hidden_layer_sizes": [
+     64,
+     32
+    ],
+    "activation": "relu",
+    "solver": "adam",
+    "alpha": 0.0001,
+    "batch_size": 1024,
+    "learning_rate_init": 0.001,
+    "epochs": 25
+   },
+   "preprocessing": "log1p + StandardScaler; trained with partial_fit one epoch at a time",
+   "train_sample_rows": null,
+   "final_epochs": 4
+  }
+ }
+}

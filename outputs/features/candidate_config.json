@@ -1,0 +1,7 @@
+{
+ "CAND_RADIUS_M": 50.0,
+ "MAX_CANDS": 16,
+ "rule": "smallest mean candidate set with train miss rate within 0.1 pp of the grid best",
+ "train_miss_rate_pct": 0.1111,
+ "cands_per_fix": 7.905
+}
