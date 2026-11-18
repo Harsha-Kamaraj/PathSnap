@@ -186,7 +186,8 @@ it is connected.
 ## FastAPI backend (laptop 1)
 
 `api/main.py` runs the full pipeline for one trip per request: raw files → cleaning → candidates and
-features → tuned LightGBM → route decoder → predicted segment per GPS point → polylines. Then it scores
+features → **tuned Random Forest → HMM/Viterbi** (the frozen final pipeline in `models/hmm_config.json`,
+run by `hmm.predict_trip`) → predicted segment per GPS point → connected route. Then it scores
 the prediction server-side. The pipeline code is in `src/pathsnap/inference.py`. The prediction step gets
 the trip **with its reference route removed**. Only `score_trip` reads the route, after prediction, and
 only the resulting numbers go to the UI.
@@ -200,12 +201,14 @@ PATHSNAP_TRIPS_DIR=evaluator_test .venv/bin/python -m uvicorn api.main:app --hos
 # Windows (PowerShell):  $env:PATHSNAP_TRIPS_DIR="evaluator_test"; .venv/Scripts/python -m uvicorn api.main:app --host 0.0.0.0 --port 8000
 ```
 
-`--host 0.0.0.0` lets laptop 2 connect. Allow port 8000 through laptop 1's firewall. `PATHSNAP_MODEL`
-selects another model file (default `models/LightGBM_tuned.joblib`). Every request is logged in the
-console with step timings and scores (the "API logs" the evaluators ask to see).
+`--host 0.0.0.0` lets laptop 2 connect. Allow port 8000 through laptop 1's firewall. Every request is
+logged in the console with step timings and scores (the "API logs" the evaluators ask to see).
 
-* **Decoder:** classifier-only for now. When the HMM/Viterbi step is ready, call it in
-  `inference.decode()` and set `DECODER_NAME`. The API and UI need no other change.
+* **Model:** RandomForest_tuned + HMM by default. `PATHSNAP_CLASSIFIER=LightGBM_tuned` switches to tuned
+  LightGBM with its own tuned decoder parameters (both are in `models/hmm_config.json`).
+* **Check (student_test, this Mac):** Top-1 0.9634 with HMM vs 0.9005 classifier-only over 19,157 fixes.
+  notebook 07 reports 0.9523 / 0.8992. The gap is the known rank-tie issue (results vary slightly between
+  machines); trip 00000052 matches exactly.
 * **macOS:** LightGBM needs OpenMP: `brew install libomp`.
 
 ## HMM + Viterbi route reconstruction (notebook 07)

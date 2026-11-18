@@ -11,7 +11,8 @@ Run from the repo root, inside the venv:
 Settings (environment variables):
     PATHSNAP_TRIPS_DIR   folder with one sub-folder per trip
                          (default: "Student folder/student_test"; demo day: "evaluator_test")
-    PATHSNAP_MODEL       classifier file (default: models/LightGBM_tuned.joblib)
+    PATHSNAP_CLASSIFIER  classifier to use with its tuned HMM decoder (default: the frozen choice in
+                         models/hmm_config.json, RandomForest_tuned; alternative: LightGBM_tuned)
 
 The reference routes stay on this laptop. They are only read by `score_trip`, after
 the prediction is finished, and only the resulting numbers are sent to the UI.
@@ -25,7 +26,6 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-import joblib
 import numpy as np
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -42,8 +42,7 @@ def _repo_path(env: str, default: str) -> Path:
 
 
 TRIPS_DIR = _repo_path("PATHSNAP_TRIPS_DIR", "Student folder/student_test")
-MODEL_PATH = _repo_path("PATHSNAP_MODEL", "models/LightGBM_tuned.joblib")
-CLASSIFIER_NAME = MODEL_PATH.stem
+CLASSIFIER = os.environ.get("PATHSNAP_CLASSIFIER") or None
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-5s  %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger("pathsnap.api")
@@ -54,10 +53,10 @@ STATE: dict = {}
 async def lifespan(app: FastAPI):
     if not TRIPS_DIR.is_dir():
         raise RuntimeError(f"Trips folder not found: {TRIPS_DIR} (set PATHSNAP_TRIPS_DIR)")
-    STATE["model"] = joblib.load(MODEL_PATH)
+    STATE["pipe"] = I.load_pipeline(CLASSIFIER)
     STATE["trip_ids"] = I.list_trip_ids(TRIPS_DIR)
-    log.info("PathSnap API ready | model=%s | decoder=%s | trips=%d from %s",
-             CLASSIFIER_NAME, I.DECODER_NAME, len(STATE["trip_ids"]), TRIPS_DIR.name)
+    log.info("PathSnap API ready | classifier=%s | decoder=%s | trips=%d from %s",
+             STATE["pipe"]["name"], I.DECODER_NAME, len(STATE["trip_ids"]), TRIPS_DIR.name)
     yield
 
 
@@ -70,7 +69,7 @@ class PredictRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "classifier": CLASSIFIER_NAME, "decoder": I.DECODER_NAME,
+    return {"status": "ok", "classifier": STATE["pipe"]["name"], "decoder": I.DECODER_NAME,
             "n_trips": len(STATE["trip_ids"]), "mock": False}
 
 
@@ -92,12 +91,10 @@ def predict(req: PredictRequest):
         raise HTTPException(404, f"unknown trip_id {tid}")
     t0 = time.perf_counter()
     try:
+        out = I.predict_trip(TRIPS_DIR, tid, STATE["pipe"])        # prediction: no route
         trip = I.load_raw_trip(TRIPS_DIR, tid)
-        out = I.predict_trip(trip, STATE["model"])
-        c = out["clean"]
-        route = I.route_polylines(out["pred_final"], c)
         t_score = time.perf_counter()
-        metrics = I.score_trip(trip, c, out["pred_final"], out["pred_classifier"])
+        metrics = I.score_trip(trip, out)                          # scoring: route, numbers only
         t_score = time.perf_counter() - t_score
     except Exception as e:  # report the failure to the UI instead of a bare 500
         log.exception("POST /predict  trip=%s -> 500", tid)
@@ -105,10 +102,10 @@ def predict(req: PredictRequest):
     total_ms = (time.perf_counter() - t0) * 1000
 
     ts = out["timings_s"]
-    log.info("POST /predict  trip=%s points=%d candidates=%d | clean %.2fs features %.2fs model %.2fs "
-             "decode %.2fs score %.2fs | total %.0f ms",
-             tid, len(trip.track), out["n_candidates"], ts["clean"], ts["features"], ts["model"],
-             ts["decode"], t_score, total_ms)
+    log.info("POST /predict  trip=%s points=%d | clean+features %.2fs classifier %.2fs hmm build %.2fs "
+             "viterbi %.2fs score %.2fs | total %.0f ms",
+             tid, len(trip.track), ts["clean_features_s"], ts["classifier_s"], ts["hmm_build_s"],
+             ts["viterbi_s"], t_score, total_ms)
     log.info("               trip=%s Top-1 %s (classifier only %s) | route continuity %s | scored %d points",
              tid, _pct(metrics["top1_accuracy"]), _pct(metrics["top1_accuracy_classifier_only"]),
              _pct(metrics["route_continuity"]), metrics["n_scored_points"])
@@ -117,10 +114,10 @@ def predict(req: PredictRequest):
         "trip_id": tid,
         "n_points": len(trip.track),
         "gps": np.round(trip.track[:, :2], 6).tolist(),
-        "predicted_route": route,
+        "predicted_route": out["route"],
         "metrics": metrics,
         "timing_ms": {"total": round(total_ms, 1)},
-        "classifier": CLASSIFIER_NAME,
+        "classifier": STATE["pipe"]["name"],
         "decoder": I.DECODER_NAME,
         "mock": False,
     }
