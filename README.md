@@ -28,6 +28,8 @@ outputs/cleaning/    cleaning summary + report (committed as evidence)
 data/processed/      cleaned trips (git-ignored, regenerate with run_cleaning.py)
 docs/DATA_QUALITY_NOTES.md   interpretation, assumptions and decisions
 docs/API_CONTRACT.md request/response format between the API (laptop 1) and the UI (laptop 2)
+api/main.py          FastAPI backend (laptop 1): /health, /trips, /predict
+src/pathsnap/inference.py  one-trip pipeline used by the API: clean -> features -> model -> decode -> score
 ui/app.py            Streamlit evaluator UI (laptop 2)
 ui/mock_api.py       mock API that follows the contract, for testing the UI
 ui/requirements.txt  packages needed on laptop 2 (UI only)
@@ -172,3 +174,28 @@ it is connected.
 .venv/bin/python -m uvicorn ui.mock_api:app --host 0.0.0.0 --port 8000   # needs data/processed
 .venv/bin/streamlit run ui/app.py
 ```
+
+## FastAPI backend (laptop 1)
+
+`api/main.py` runs the full pipeline for one trip per request: raw files → cleaning → candidates and
+features → tuned LightGBM → route decoder → predicted segment per GPS point → polylines. Then it scores
+the prediction server-side. The pipeline code is in `src/pathsnap/inference.py`. The prediction step gets
+the trip **with its reference route removed**. Only `score_trip` reads the route, after prediction, and
+only the resulting numbers go to the UI.
+
+```bash
+# development (student_test trips, which have answers to check against)
+.venv/bin/python -m uvicorn api.main:app --host 0.0.0.0 --port 8000
+
+# demo day on laptop 1: copy the evaluator_test/ folder into the repo root first (it is git-ignored)
+PATHSNAP_TRIPS_DIR=evaluator_test .venv/bin/python -m uvicorn api.main:app --host 0.0.0.0 --port 8000
+# Windows (PowerShell):  $env:PATHSNAP_TRIPS_DIR="evaluator_test"; .venv/Scripts/python -m uvicorn api.main:app --host 0.0.0.0 --port 8000
+```
+
+`--host 0.0.0.0` lets laptop 2 connect. Allow port 8000 through laptop 1's firewall. `PATHSNAP_MODEL`
+selects another model file (default `models/LightGBM_tuned.joblib`). Every request is logged in the
+console with step timings and scores (the "API logs" the evaluators ask to see).
+
+* **Decoder:** classifier-only for now. When the HMM/Viterbi step is ready, call it in
+  `inference.decode()` and set `DECODER_NAME`. The API and UI need no other change.
+* **macOS:** LightGBM needs OpenMP: `brew install libomp`.

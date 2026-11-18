@@ -21,6 +21,7 @@ Is the API up, and what is it running?
   "status": "ok",
   "classifier": "LightGBM_tuned",
   "decoder": "HMM-Viterbi",
+  "n_trips": 10,
   "mock": false
 }
 ```
