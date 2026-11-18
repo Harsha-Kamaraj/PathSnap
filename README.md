@@ -14,6 +14,7 @@ src/pathsnap/        reusable code
   cleaning.py        per-trip cleaning: metres, segments, stops, quality flags
 scripts/run_eda.py   dataset exploration: tables, figures, Folium maps, report
 scripts/run_cleaning.py  cleans every trip into data/processed/
+notebooks/03_features.ipynb  candidates, labels and features -> data/features/
 outputs/eda/         generated EDA outputs (committed as evidence)
 outputs/cleaning/    cleaning summary + report (committed as evidence)
 data/processed/      cleaned trips (git-ignored, regenerate with run_cleaning.py)
@@ -67,3 +68,21 @@ their reference route).
 * [`outputs/cleaning/CLEANING_REPORT.md`](outputs/cleaning/CLEANING_REPORT.md): what was flagged and excluded
 * [`outputs/cleaning/cleaning_summary.csv`](outputs/cleaning/cleaning_summary.csv): one row per trip
 * Load a cleaned trip: `from pathsnap.cleaning import load_clean_trip`
+
+## Candidates, labels and features (steps 2 + 3)
+
+Run `notebooks/03_features.ipynb` (kernel "PathSnap (.venv)"; needs `data/processed` from `run_cleaning.py`; ~30 s).
+
+```bash
+.venv/Scripts/python -m ipykernel install --user --name pathsnap --display-name "PathSnap (.venv)"   # once
+.venv/Scripts/python -m jupyter lab notebooks/03_features.ipynb
+```
+
+The functions live in `src/pathsnap/features.py`, so the API can reuse them at inference time. The notebook runs them and explains each stage.
+For each fix, the candidates are the canonical arcs within 100 m (at most 16 nearest).
+Each fix gets its reference arc from a monotone alignment of the fixes to the `.route` sequence, which handles
+U-turns and revisited arcs. Every (fix, candidate) row has 26 label-free features (`FEATURE_COLS`).
+
+* `data/features/<partition>.parquet`: one row per (fix, candidate). Train on `label_reliable & ~exclude_trip`, group by `trip_id`.
+* `data/features/<partition>_fixes.parquet`: one row per fix (for Top-1 / miss-rate scoring).
+* [`outputs/features/FEATURES_REPORT.md`](outputs/features/FEATURES_REPORT.md): candidate miss rate (train 0.10%, student_test 0.03%), baselines and figures.
