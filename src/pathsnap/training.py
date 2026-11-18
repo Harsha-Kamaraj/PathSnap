@@ -58,34 +58,71 @@ class ModelSpec:
     notes: str = ""
 
 
+# ======================================================================================
+#                          THE 5 MODELS  (used by notebooks/04_model_training.ipynb)
+# ======================================================================================
 def model_specs() -> dict[str, ModelSpec]:
+    """Name -> ModelSpec for the 5 compared models, in the order used in every table and plot."""
+    specs = {}
+
+    # ----------------------------------------------------------------------------------
+    # MODEL 1: LOGISTIC REGRESSION  (family: Linear)
+    # Simple baseline with clean probabilities. Loss: log loss + L2 penalty (L-BFGS).
+    # ----------------------------------------------------------------------------------
     lr_cfg = dict(C=1.0, solver="lbfgs", max_iter=1000)   # default penalty = L2
+    specs["LogisticRegression"] = ModelSpec(
+        "LogisticRegression", "Linear", lr_cfg,
+        lambda: scaled(LogisticRegression(**lr_cfg, random_state=SEED)),
+        notes="log1p + StandardScaler")
+
+    # ----------------------------------------------------------------------------------
+    # MODEL 2: K-NEAREST NEIGHBOURS  (family: Instance-based)
+    # P(true arc) = share of the 50 most similar training rows that are true arcs.
+    # Slow to predict, so it is trained on a fixed random sample of KNN_SAMPLE_ROWS rows.
+    # ----------------------------------------------------------------------------------
     knn_cfg = dict(n_neighbors=50, weights="uniform", algorithm="auto")
+    specs["KNN"] = ModelSpec(
+        "KNN", "Instance-based", knn_cfg,
+        lambda: scaled(KNeighborsClassifier(**knn_cfg, n_jobs=-1)),
+        sample_rows=KNN_SAMPLE_ROWS,
+        notes=f"log1p + StandardScaler; trained on a random {KNN_SAMPLE_ROWS:,}-row sample")
+
+    # ----------------------------------------------------------------------------------
+    # MODEL 3: RANDOM FOREST  (family: Ensemble / bagging)
+    # Many Gini-impurity trees on bootstrap samples, averaged. Gives feature importances.
+    # ----------------------------------------------------------------------------------
     rf_cfg = dict(n_estimators=150, max_features="sqrt", min_samples_leaf=20, max_samples=0.3,
                   bootstrap=True, n_jobs=-1)
+    specs["RandomForest"] = ModelSpec(
+        "RandomForest", "Ensemble (bagging)", rf_cfg,
+        lambda: RandomForestClassifier(**rf_cfg, random_state=SEED),
+        notes="raw features (trees do not need scaling)")
+
+    # ----------------------------------------------------------------------------------
+    # MODEL 4: LIGHTGBM  (family: Boosting)
+    # Trees added one at a time, each correcting the previous ones (gradient boosting on log loss).
+    # ----------------------------------------------------------------------------------
     lgb_cfg = dict(n_estimators=400, learning_rate=0.05, num_leaves=63, min_child_samples=50,
                    subsample=0.8, subsample_freq=1, colsample_bytree=0.8, reg_lambda=1.0, verbose=-1)
+    specs["LightGBM"] = ModelSpec(
+        "LightGBM", "Boosting", lgb_cfg,
+        lambda: LGBMClassifier(**lgb_cfg, random_state=SEED),
+        notes="raw features")
+
+    # ----------------------------------------------------------------------------------
+    # MODEL 5: MLP NEURAL NETWORK  (family: Neural network)
+    # 2 hidden layers (64, 32), ReLU, Adam, log loss + L2. Trained one epoch at a time in
+    # fit_model() below, which records real per-epoch train / validation loss.
+    # ----------------------------------------------------------------------------------
     mlp_cfg = dict(hidden_layer_sizes=(64, 32), activation="relu", solver="adam", alpha=1e-4,
                    batch_size=1024, learning_rate_init=1e-3)
-    return {
-        "LogisticRegression": ModelSpec("LogisticRegression", "Linear", lr_cfg,
-                                        lambda: scaled(LogisticRegression(**lr_cfg, random_state=SEED)),
-                                        notes="log1p + StandardScaler"),
-        "KNN": ModelSpec("KNN", "Instance-based", knn_cfg,
-                         lambda: scaled(KNeighborsClassifier(**knn_cfg, n_jobs=-1)),
-                         sample_rows=KNN_SAMPLE_ROWS,
-                         notes=f"log1p + StandardScaler; trained on a random {KNN_SAMPLE_ROWS:,}-row sample"),
-        "RandomForest": ModelSpec("RandomForest", "Ensemble (bagging)", rf_cfg,
-                                  lambda: RandomForestClassifier(**rf_cfg, random_state=SEED),
-                                  notes="raw features (trees do not need scaling)"),
-        "LightGBM": ModelSpec("LightGBM", "Boosting", lgb_cfg,
-                              lambda: LGBMClassifier(**lgb_cfg, random_state=SEED),
-                              notes="raw features"),
-        "MLP": ModelSpec("MLP", "Neural network", {**mlp_cfg, "epochs": MLP_EPOCHS},
-                         lambda: scaled(MLPClassifier(**mlp_cfg, random_state=SEED)),
-                         epochs=MLP_EPOCHS,
-                         notes="log1p + StandardScaler; trained with partial_fit one epoch at a time"),
-    }
+    specs["MLP"] = ModelSpec(
+        "MLP", "Neural network", {**mlp_cfg, "epochs": MLP_EPOCHS},
+        lambda: scaled(MLPClassifier(**mlp_cfg, random_state=SEED)),
+        epochs=MLP_EPOCHS,
+        notes="log1p + StandardScaler; trained with partial_fit one epoch at a time")
+
+    return specs
 
 
 # ------------------------------------------------------------------ data

@@ -96,6 +96,20 @@ Run `notebooks/04_model_training.ipynb` after notebook 03 (about 25 min on CPU).
 Random Forest, LightGBM and an MLP with 5-fold GroupKFold on `trip_id`, refits each on all usable train trips and scores
 it once on student_test. Code: `src/pathsnap/training.py`.
 
+**Where the model code is:** all 5 models are defined in `model_specs()` in
+[`src/pathsnap/training.py`](src/pathsnap/training.py), each under its own `MODEL n` banner:
+
+| # | model | family | code |
+|---|---|---|---|
+| 1 | Logistic Regression | Linear | [`training.py` line 69](src/pathsnap/training.py#L69) |
+| 2 | K-Nearest Neighbours | Instance-based | [`training.py` line 79](src/pathsnap/training.py#L79) |
+| 3 | Random Forest | Ensemble (bagging) | [`training.py` line 91](src/pathsnap/training.py#L91) |
+| 4 | LightGBM | Boosting | [`training.py` line 102](src/pathsnap/training.py#L102) |
+| 5 | MLP | Neural network | [`training.py` line 113](src/pathsnap/training.py#L113) |
+
+The same file has the training loop (`fit_model`, including the MLP's per-epoch loop) and the metrics (`evaluate`).
+The notebook runs the experiment and makes the tables and plots.
+
 * [`outputs/models/MODEL_COMPARISON.md`](outputs/models/MODEL_COMPARISON.md): results tables and figures
 * `outputs/models/`: `model_comparison.csv`, `per_fold.csv`, `configs.json` (all settings and the seed), `experiment_log.jsonl`,
   `mlp_history.csv`, `confusion_matrices.json`, `figures/`
