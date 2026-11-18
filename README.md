@@ -30,6 +30,7 @@ notebooks/04_model_training.ipynb  5 models, CV + student_test comparison -> out
 notebooks/05_bayesian_tuning.ipynb  Optuna TPE tuning of LightGBM -> outputs/tuning/, models/LightGBM_tuned.joblib
 notebooks/06_bayesian_tuning_rf.ipynb  Optuna TPE tuning of Random Forest -> outputs/tuning_rf/, models/RandomForest_tuned.joblib
 notebooks/07_hmm_viterbi.ipynb  HMM/Viterbi decoding, classifier vs HMM, Folium maps -> outputs/hmm/, models/hmm_config.json
+notebooks/08_evaluator_test.ipynb  final scores of the frozen pipeline on the evaluator_test trips -> outputs/evaluator_results/
 outputs/eda/         generated EDA outputs (committed as evidence)
 outputs/cleaning/    cleaning summary + report (committed as evidence)
 data/processed/      cleaned trips (git-ignored, regenerate with run_cleaning.py)
@@ -236,3 +237,11 @@ out = hmm.predict_trip("student_test", "00000000", model, cfg["decoder_params"])
 out["fixes"]   # per fix: lon, lat, t, pred_arc_classifier, pred_arc_hmm, carried_over
 out["path"]    # connected pieces of arcs with [lon, lat] coordinates, for the map
 ```
+
+## Final run on the evaluator_test trips (notebook 08)
+
+`notebooks/08_evaluator_test.ipynb` scores the **frozen** pipeline (`models/hmm_config.json`: tuned Random Forest + HMM)
+on the 10 reserved evaluator_test trips. Nothing is chosen or tuned there. Each trip is predicted with
+`hmm.predict_trip` (no `.route`), and the route is read only afterwards, for scoring. The trip folder is git-ignored:
+put it in the repo root or next to the repo as `evaluator_test/evaluator_test/<trip_id>/`, or set `PATHSNAP_EVAL_ROOT`
+to the folder that contains `evaluator_test/`. Results: [`outputs/evaluator_results/EVALUATOR_TEST_REPORT.md`](outputs/evaluator_results/EVALUATOR_TEST_REPORT.md).
