@@ -155,7 +155,6 @@ tuned too because it was the most accurate untuned model, only a few tenths of a
   `best_params.json`, `search_space.json`, `rf_lgbm_tuned_vs_untuned.csv`, `per_fold_top1.csv`, `study.db`, `figures/`.
 * Model: `models/RandomForest_tuned.joblib`. The untuned `models/RandomForest.joblib` is unchanged.
 
-<<<<<<< Updated upstream
 
 ## Evaluator UI (Streamlit, laptop 2)
 
@@ -207,7 +206,7 @@ console with step timings and scores (the "API logs" the evaluators ask to see).
 * **Decoder:** classifier-only for now. When the HMM/Viterbi step is ready, call it in
   `inference.decode()` and set `DECODER_NAME`. The API and UI need no other change.
 * **macOS:** LightGBM needs OpenMP: `brew install libomp`.
-=======
+
 ## HMM + Viterbi route reconstruction (notebook 07)
 
 Run `notebooks/07_hmm_viterbi.ipynb` after notebooks 05 and 06 (about 40 min on CPU, most of it nested CV). It decodes each trip with an HMM
@@ -237,4 +236,3 @@ out = hmm.predict_trip("student_test", "00000000", model, cfg["decoder_params"])
 out["fixes"]   # per fix: lon, lat, t, pred_arc_classifier, pred_arc_hmm, carried_over
 out["path"]    # connected pieces of arcs with [lon, lat] coordinates, for the map
 ```
->>>>>>> Stashed changes
