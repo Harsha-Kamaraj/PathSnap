@@ -19,7 +19,7 @@ Is the API up, and what is it running?
 ```json
 {
   "status": "ok",
-  "classifier": "LightGBM_tuned",
+  "classifier": "RandomForest_tuned",
   "decoder": "HMM-Viterbi",
   "n_trips": 10,
   "mock": false
@@ -65,7 +65,7 @@ Response:
     "n_scored_points": 1398
   },
   "timing_ms": {"total": 830.5},
-  "classifier": "LightGBM_tuned",
+  "classifier": "RandomForest_tuned",
   "decoder": "HMM-Viterbi",
   "mock": false
 }
