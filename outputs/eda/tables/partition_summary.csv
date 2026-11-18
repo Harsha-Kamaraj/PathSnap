@@ -1,0 +1,3 @@
+partition,trips,files_present,gps_points_total,gps_points_median,nodes_total,arcs_total,route_arcs_total,disk_mb
+student_test,10,40,19160,1420.0,90689,185041,3477,4.65
+train,80,320,208417,1529.0,1933485,3876904,31336,95.58
