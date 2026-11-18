@@ -16,10 +16,12 @@ src/pathsnap/        reusable code
   candidates.py      candidate arcs per fix
   features.py        candidate features
   training.py        model registry, CV, metrics
+  tuning.py          LightGBM search space + Optuna objective
 scripts/run_eda.py   dataset exploration: tables, figures, Folium maps, report
 scripts/run_cleaning.py  cleans every trip into data/processed/
 notebooks/03_features.ipynb  labels, candidates and features -> data/features/
 notebooks/04_model_training.ipynb  5 models, CV + student_test comparison -> outputs/models/, models/
+notebooks/05_bayesian_tuning.ipynb  Optuna TPE tuning of LightGBM -> outputs/tuning/, models/LightGBM_tuned.joblib
 outputs/eda/         generated EDA outputs (committed as evidence)
 outputs/cleaning/    cleaning summary + report (committed as evidence)
 data/processed/      cleaned trips (git-ignored, regenerate with run_cleaning.py)
@@ -114,3 +116,16 @@ The notebook runs the experiment and makes the tables and plots.
 * `outputs/models/`: `model_comparison.csv`, `per_fold.csv`, `configs.json` (all settings and the seed), `experiment_log.jsonl`,
   `mlp_history.csv`, `confusion_matrices.json`, `figures/`
 * `models/*.joblib`: fitted models. Files over 50 MB are git-ignored, so regenerate them with the notebook.
+
+## Bayesian hyperparameter optimisation of LightGBM (notebook 05)
+
+Run `notebooks/05_bayesian_tuning.ipynb` after notebook 04 (about 80 min on CPU).
+
+* Optuna TPE sampler (seed 42) with a MedianPruner. Objective: mean CV Top-1 over the same 5 GroupKFold folds as notebook 04.
+  At most 60 trials or 75 minutes. student_test is scored once, after the search.
+* Code: [`src/pathsnap/tuning.py`](src/pathsnap/tuning.py) holds the search space, objective and study setup.
+* [`outputs/tuning/TUNING_REPORT.md`](outputs/tuning/TUNING_REPORT.md) answers the report questions. Also in `outputs/tuning/`:
+  `trials.csv` (every trial with per-fold scores), `best_params.json`, `search_space.json`, `tuned_vs_untuned.csv`,
+  `per_fold_top1.csv`, `study.db` (the Optuna study) and `figures/`.
+* Model: `models/LightGBM_tuned.joblib`. The untuned `models/LightGBM.joblib` is unchanged.
+

@@ -1,0 +1,25 @@
+{
+ "trial": 31,
+ "cv_top1": 0.8900449726272583,
+ "params": {
+  "learning_rate": 0.039336642824202996,
+  "n_estimators": 600,
+  "num_leaves": 23,
+  "max_depth": 12,
+  "min_child_samples": 117,
+  "subsample": 0.5178783344518753,
+  "colsample_bytree": 0.409403109557197,
+  "reg_alpha": 0.01232237658377428,
+  "reg_lambda": 0.0529555460839713,
+  "min_split_gain": 0.7983873933167408,
+  "subsample_freq": 1,
+  "verbose": -1
+ },
+ "trials_total": 60,
+ "complete": 23,
+ "pruned": 37,
+ "failed": 0,
+ "wall_clock_min": 41.9,
+ "best_trial": 31,
+ "best_cv_top1": 0.89
+}
