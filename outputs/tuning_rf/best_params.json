@@ -1,0 +1,21 @@
+{
+ "trial": 26,
+ "cv_top1": 0.8894031459742587,
+ "params": {
+  "n_estimators": 175,
+  "max_features": 0.1211970669619417,
+  "min_samples_leaf": 5,
+  "max_samples": 0.34387510983753256,
+  "max_depth": 15,
+  "criterion": "entropy",
+  "bootstrap": true,
+  "n_jobs": -1
+ },
+ "trials_total": 37,
+ "complete": 23,
+ "pruned": 14,
+ "failed": 0,
+ "wall_clock_min": 76.4,
+ "best_trial": 26,
+ "best_cv_top1": 0.8894
+}

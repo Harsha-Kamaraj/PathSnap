@@ -16,12 +16,13 @@ src/pathsnap/        reusable code
   candidates.py      candidate arcs per fix
   features.py        candidate features
   training.py        model registry, CV, metrics
-  tuning.py          LightGBM search space + Optuna objective
+  tuning.py          LightGBM + Random Forest search spaces, Optuna objective
 scripts/run_eda.py   dataset exploration: tables, figures, Folium maps, report
 scripts/run_cleaning.py  cleans every trip into data/processed/
 notebooks/03_features.ipynb  labels, candidates and features -> data/features/
 notebooks/04_model_training.ipynb  5 models, CV + student_test comparison -> outputs/models/, models/
 notebooks/05_bayesian_tuning.ipynb  Optuna TPE tuning of LightGBM -> outputs/tuning/, models/LightGBM_tuned.joblib
+notebooks/06_bayesian_tuning_rf.ipynb  Optuna TPE tuning of Random Forest -> outputs/tuning_rf/, models/RandomForest_tuned.joblib
 outputs/eda/         generated EDA outputs (committed as evidence)
 outputs/cleaning/    cleaning summary + report (committed as evidence)
 data/processed/      cleaned trips (git-ignored, regenerate with run_cleaning.py)
@@ -128,4 +129,16 @@ Run `notebooks/05_bayesian_tuning.ipynb` after notebook 04 (about 80 min on CPU)
   `trials.csv` (every trial with per-fold scores), `best_params.json`, `search_space.json`, `tuned_vs_untuned.csv`,
   `per_fold_top1.csv`, `study.db` (the Optuna study) and `figures/`.
 * Model: `models/LightGBM_tuned.joblib`. The untuned `models/LightGBM.joblib` is unchanged.
+
+## Bayesian hyperparameter optimisation of Random Forest (notebook 06)
+
+Run `notebooks/06_bayesian_tuning_rf.ipynb` after notebook 05 (about 80 min on CPU). It uses the same protocol as notebook 05:
+the same folds, the Top-1 objective, TPE (seed 42) and MedianPruner, with at most 40 trials or 75 minutes. Random Forest was
+tuned too because it was the most accurate untuned model, only a few tenths of a point ahead of LightGBM.
+
+* Search space: `RF_SEARCH_SPACE` in [`src/pathsnap/tuning.py`](src/pathsnap/tuning.py).
+* [`outputs/tuning_rf/TUNING_REPORT_RF.md`](outputs/tuning_rf/TUNING_REPORT_RF.md) answers the report questions and compares
+  RF and LightGBM, untuned and tuned (all four models re-timed in one session). Also in `outputs/tuning_rf/`: `trials.csv`,
+  `best_params.json`, `search_space.json`, `rf_lgbm_tuned_vs_untuned.csv`, `per_fold_top1.csv`, `study.db`, `figures/`.
+* Model: `models/RandomForest_tuned.joblib`. The untuned `models/RandomForest.joblib` is unchanged.
 

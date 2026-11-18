@@ -1,4 +1,4 @@
-"""Bayesian hyperparameter optimisation of LightGBM (step 5).
+"""Bayesian hyperparameter optimisation (step 5): LightGBM (notebook 05) and Random Forest (notebook 06).
 
 * Sampler: Optuna TPE (Tree-structured Parzen Estimator), seed 42. TPE builds two density
   models, one of good past trials and one of bad ones, and proposes parameters that are likely
@@ -21,12 +21,17 @@ import numpy as np
 import optuna
 import pandas as pd
 from lightgbm import LGBMClassifier
+from sklearn.ensemble import RandomForestClassifier
 
 from . import training as T
 
 N_TRIALS = 60
 TIMEOUT_S = 75 * 60           # time budget: the search must finish in ~75 min (hackathon schedule)
 PRUNER_STARTUP_TRIALS = 5     # no pruning until 5 trials have finished (needs a fair median)
+
+# =====================================================================================
+#                                      LIGHTGBM
+# =====================================================================================
 
 # Untuned baseline from notebook 04 (unchanged). It is queued as trial 0 so the search starts
 # from a known point. reg_alpha=1e-8 and min_split_gain=0 are effectively LightGBM's defaults.
@@ -49,10 +54,48 @@ SEARCH_SPACE = {
 FIXED = dict(subsample_freq=1, verbose=-1)   # subsample_freq=1 so `subsample` is actually applied
 
 
-def suggest(trial: optuna.Trial) -> dict:
-    """Draw one configuration from SEARCH_SPACE."""
+# =====================================================================================
+#                                    RANDOM FOREST
+# =====================================================================================
+RF_N_TRIALS = 40
+RF_TIMEOUT_S = 75 * 60
+
+# Untuned Random Forest from notebook 04 (unchanged), queued as trial 0. max_features="sqrt" on
+# 27 features = int(5.196) = 5 features; the fraction 0.1925 gives int(0.1925 * 27) = 5 too, so
+# this reproduces the untuned model exactly.
+RF_BASELINE = dict(n_estimators=150, max_features=0.1925, min_samples_leaf=20, max_samples=0.3,
+                   max_depth=None, criterion="gini")
+
+# The cost of a forest grows with trees x rows per tree x features tried per split. A timing test
+# showed one fold at 250 trees / 50 % of features / 40 % of rows takes ~4 min (a full trial ~20 min),
+# so max_features and max_samples are capped at 0.4 and 0.35 to fit the ~75 min budget.
+# class_weight is not searched: re-weighting the classes distorts the probabilities that the HMM
+# will later use as emission scores.
+RF_SEARCH_SPACE = {
+    "n_estimators":     {"type": "int", "low": 50, "high": 250, "step": 25},
+    "max_features":     {"type": "float", "low": 0.1, "high": 0.4},     # share of the 27 features per split
+    "min_samples_leaf": {"type": "int", "low": 5, "high": 200, "log": True},
+    "max_samples":      {"type": "float", "low": 0.1, "high": 0.35},   # share of rows per tree (bootstrap)
+    "max_depth":        {"type": "categorical", "choices": [None, 10, 15, 20, 30]},
+    "criterion":        {"type": "categorical", "choices": ["gini", "entropy"]},
+}
+RF_FIXED = dict(bootstrap=True, n_jobs=-1)
+
+
+def rf_spec(params: dict, name: str = "RandomForest_tuned") -> T.ModelSpec:
+    cfg = {**params, **RF_FIXED}
+    return T.ModelSpec(name, "Ensemble (bagging)", cfg,
+                       lambda: RandomForestClassifier(**cfg, random_state=T.SEED),
+                       notes="raw features (trees do not need scaling)")
+
+
+# =====================================================================================
+#                            SHARED: sampling, CV objective, study
+# =====================================================================================
+def suggest(trial: optuna.Trial, space: dict = SEARCH_SPACE) -> dict:
+    """Draw one configuration from a search space (LightGBM's by default)."""
     p = {}
-    for name, s in SEARCH_SPACE.items():
+    for name, s in space.items():
         if s["type"] == "float":
             p[name] = trial.suggest_float(name, s["low"], s["high"], log=s.get("log", False))
         elif s["type"] == "int":
@@ -72,10 +115,11 @@ def lgbm_spec(params: dict, name: str = "LightGBM_tuned") -> T.ModelSpec:
 
 
 def cv_score(params: dict, train: pd.DataFrame, train_fx: pd.DataFrame, folds: list, arcs: dict,
-             trial: optuna.Trial | None = None) -> list[dict]:
+             trial: optuna.Trial | None = None, build=None) -> list[dict]:
     """Fit + evaluate one configuration fold by fold (same protocol as notebook 04).
-    With a trial, reports the running mean Top-1 after every fold so the pruner can stop it."""
-    spec = lgbm_spec(params)
+    With a trial, reports the running mean Top-1 after every fold so the pruner can stop it.
+    `build` turns params into a ModelSpec (lgbm_spec by default, rf_spec for Random Forest)."""
+    spec = (build or lgbm_spec)(params)
     usable = T.training_mask(train)
     out = []
     for k, (tr_idx, va_idx) in enumerate(folds):
@@ -95,10 +139,10 @@ def cv_score(params: dict, train: pd.DataFrame, train_fx: pd.DataFrame, folds: l
     return out
 
 
-def make_objective(train, train_fx, folds, arcs):
+def make_objective(train, train_fx, folds, arcs, space: dict = SEARCH_SPACE, build=None):
     def objective(trial: optuna.Trial) -> float:
         t0 = time.perf_counter()
-        res = cv_score(suggest(trial), train, train_fx, folds, arcs, trial)
+        res = cv_score(suggest(trial, space), train, train_fx, folds, arcs, trial, build)
         trial.set_user_attr("trial_s", time.perf_counter() - t0)
         for key in ("all_top1", "all_macro_f1", "all_logloss", "route_continuity", "reliable_top1"):
             vals = [r[key] for r in res]
