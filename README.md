@@ -1,250 +1,252 @@
-# PathSnap: GPS Map-Matching
+# PathSnap: Distributed Map-Matching & Route Reconstruction
 
-PES University UE24CS352A hackathon. Match noisy GPS trajectories to arcs of a road network.
-Team Members :
-1. Harsha K - PES1UG24CS666
-2. Arjun Kangal - PES1UG24CS922
-3. Santosh N - PES1UG24CS615
-4. Sanskar G - PES1UG24CS614
+**PES University · UE24CS352A Machine Learning · Hackathon**
+
+PathSnap takes noisy GPS traces and reconstructs the road route a vehicle actually drove. For every GPS fix it
+predicts the directed road segment (arc) the vehicle was on. Then an HMM/Viterbi decoder joins those predictions
+into a connected route. The system runs on two laptops: a FastAPI backend with the model, and a Streamlit UI for
+the evaluator.
+
+📄 **Technical report:** [`docs/4_Report.pdf`](docs/4_Report.pdf)
+
+## Team
+
+| Name | SRN |
+|---|---|
+| Harsha K | PES1UG24CS666 |
+| Arjun Kangal | PES1UG24CS922 |
+| Santosh N | PES1UG24CS615 |
+| Sanskar G | PES1UG24CS614 |
+
+## Results at a glance
+
+Final pipeline: **tuned Random Forest + HMM/Viterbi** (frozen in [`models/hmm_config.json`](models/hmm_config.json)).
+Metric: observation-level Top-1 accuracy, the share of GPS fixes matched to the correct road segment.
+
+| Partition | Classifier only | Classifier + HMM |
+|---|---|---|
+| Train, nested 5-fold CV (80 trips) | 0.8894 ± 0.0365 | **0.9423** ± 0.0252 |
+| Student test (10 trips) | 0.8992 | **0.9523** |
+| Evaluator test (10 trips, scored once) | 0.8688 | **0.9616** |
+
+The HMM adds about 5–9 points, mostly by fixing fixes matched to the wrong direction of a two-way street.
+A full trip takes 0.1–0.6 s through the API.
+
+## How it works
+
+```mermaid
+flowchart LR
+    UI["Laptop 2<br/>Streamlit UI"] -- "trip_id" --> A
+    subgraph L1["Laptop 1 · FastAPI"]
+        A["Clean<br/>UTM metres, stops, gaps"] --> B["Candidates<br/>arcs within 50 m, ≤ 16"]
+        B --> C["27 features<br/>per fix × candidate"]
+        C --> D["Random Forest<br/>P(candidate is correct)"]
+        D --> E["HMM / Viterbi<br/>connected route"]
+        E --> S["Scoring<br/>Top-1, continuity"]
+        R[("Reference routes<br/>scoring only")] --> S
+    end
+    S -- "route + scores<br/>(no reference arcs)" --> UI
+```
+
+1. **Cleaning:** project each trip to its UTM zone, split at GPS gaps over 120 s, detect stops, and flag
+   off-network fixes and speed glitches. No rows are deleted, because every fix needs a prediction.
+2. **Candidates:** directed arcs within 50 m of each fix, at most 16, with geometric duplicates merged.
+3. **Features:** 27 label-free features covering distance, rank, heading vs. arc bearing, consistency over ±5 fixes,
+   speed, stop flags and topology.
+4. **Classifier:** a tuned Random Forest scores each (fix, candidate) pair.
+5. **HMM/Viterbi:** hidden states are the candidates of each fix. Emission is the classifier probability. Transition
+   compares the driving distance along directed arcs with the GPS distance, with U-turn, stop and speed penalties.
+6. **API + UI:** the UI sends only a trip id. The API predicts, then scores against the reference route on the
+   server, and returns the route and the numbers, never the reference arcs.
+
 ## Repository layout
 
 ```
-Student folder/      raw dataset (train/, student_test/), as provided
-PathSnap_student_materials/  hackathon brief PDFs
-src/pathsnap/        reusable code
-  data_io.py         robust loaders for .track/.nodes/.arcs/.route + parse-quality report
-  geo.py             per-trip UTM projection and haversine
-  eda_metrics.py     per-trip exploratory statistics and anomaly flags
-  cleaning.py        per-trip cleaning: metres, segments, stops, quality flags
-  labels.py          per-fix reference arc (route alignment)
-  candidates.py      candidate arcs per fix
-  features.py        candidate features
-  training.py        model registry, CV, metrics
-  tuning.py          LightGBM + Random Forest search spaces, Optuna objective
-  hmm.py             HMM + Viterbi route reconstruction, predict_trip() for the API
-  maps.py            Folium map of one trip (GPS, network, reference, predictions)
-scripts/run_eda.py   dataset exploration: tables, figures, Folium maps, report
-scripts/run_cleaning.py  cleans every trip into data/processed/
-notebooks/03_features.ipynb  labels, candidates and features -> data/features/
-notebooks/04_model_training.ipynb  5 models, CV + student_test comparison -> outputs/models/, models/
-notebooks/05_bayesian_tuning.ipynb  Optuna TPE tuning of LightGBM -> outputs/tuning/, models/LightGBM_tuned.joblib
-notebooks/06_bayesian_tuning_rf.ipynb  Optuna TPE tuning of Random Forest -> outputs/tuning_rf/, models/RandomForest_tuned.joblib
-notebooks/07_hmm_viterbi.ipynb  HMM/Viterbi decoding, classifier vs HMM, Folium maps -> outputs/hmm/, models/hmm_config.json
-notebooks/08_evaluator_test.ipynb  final scores of the frozen pipeline on the evaluator_test trips -> outputs/evaluator_results/
-outputs/eda/         generated EDA outputs (committed as evidence)
-outputs/cleaning/    cleaning summary + report (committed as evidence)
-data/processed/      cleaned trips (git-ignored, regenerate with run_cleaning.py)
-docs/DATA_QUALITY_NOTES.md   interpretation, assumptions and decisions
-docs/API_CONTRACT.md request/response format between the API (laptop 1) and the UI (laptop 2)
-api/main.py          FastAPI backend (laptop 1): /health, /trips, /predict
-src/pathsnap/inference.py  one-trip pipeline used by the API: clean -> features -> model -> decode -> score
-ui/app.py            Streamlit evaluator UI (laptop 2)
-ui/mock_api.py       mock API that follows the contract, for testing the UI
-ui/requirements.txt  packages needed on laptop 2 (UI only)
+api/main.py                  FastAPI backend (laptop 1): /health, /trips, /predict
+ui/app.py                    Streamlit evaluator UI (laptop 2)
+ui/mock_api.py               mock API with the same contract, for testing the UI
+ui/requirements.txt          packages needed on laptop 2 only
+src/pathsnap/
+  data_io.py                 loaders for .track / .nodes / .arcs / .route
+  geo.py                     per-trip UTM projection, haversine
+  eda_metrics.py             per-trip EDA statistics and anomaly flags
+  cleaning.py                cleaning: metres, gap segments, stops, quality flags
+  labels.py                  per-fix reference arc (order-respecting DP alignment)
+  candidates.py              candidate arcs per fix
+  features.py                27 features per (fix, candidate)
+  training.py                the 5 models, cross-validation, metrics
+  tuning.py                  Optuna search spaces and objective
+  hmm.py                     HMM + Viterbi, predict_trip()
+  maps.py                    Folium map of one trip
+  inference.py               one-trip pipeline used by the API
+scripts/run_eda.py           dataset exploration -> outputs/eda/
+scripts/run_cleaning.py      cleaning -> data/processed/ (git-ignored)
+notebooks/03 … 08            features, training, tuning (LightGBM, RF), HMM, evaluator run
+models/                      trained models + hmm_config.json (final pipeline)
+outputs/                     every table, figure, map and report behind the numbers above
+docs/                        report (PDF, Word), API contract, data-quality notes
+Student folder/              raw dataset: train/ (80 trips), student_test/ (10 trips)
+PathSnap_student_materials/  hackathon brief
 ```
 
 ## Setup
 
-```bash
-# Windows
-py -3.13 -m venv .venv
-.venv/Scripts/python -m pip install -r requirements.txt
+Python 3.13 or 3.14.
 
+```bash
 # macOS / Linux
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
+brew install libomp            # macOS only: LightGBM needs OpenMP
+
+# Windows (PowerShell)
+py -3.13 -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
 ```
 
-The raw data (train + student_test) is committed under `Student folder/`, and
-the code reads it from there by default. To use another location, set
-`PATHSNAP_DATA` to a folder that contains `train/` and `student_test/`.
+The commands below use the macOS path `.venv/bin/python`. On Windows, use `.venv\Scripts\python`.
 
-## Dataset exploration
+## Running the demo (two laptops)
+
+**Laptop 1 (API).** Copy the `evaluator_test/` folder into the repo root first. It is git-ignored and never committed.
 
 ```bash
-.venv/Scripts/python scripts/run_eda.py
+# macOS / Linux
+PATHSNAP_TRIPS_DIR=evaluator_test .venv/bin/python -m uvicorn api.main:app --host 0.0.0.0 --port 8000
+```
+```powershell
+# Windows (PowerShell)
+$env:PATHSNAP_TRIPS_DIR="evaluator_test"
+.venv\Scripts\python -m uvicorn api.main:app --host 0.0.0.0 --port 8000
 ```
 
-It takes about 3–5 minutes and is deterministic. Results:
+The first log line should read `classifier=RandomForest_tuned | decoder=HMM-Viterbi | trips=10 from evaluator_test`.
+Every request is logged with step timings and scores. Without `PATHSNAP_TRIPS_DIR` the API serves the student_test trips.
 
-* [`outputs/eda/EDA_REPORT.md`](outputs/eda/EDA_REPORT.md): key numbers and embedded figures
-* [`outputs/eda/tables/`](outputs/eda/tables): `inventory.csv`, `trip_summary.csv` (one row per trip, ~100 columns), partition/trajectory/network/route summaries, `anomalies.csv`
-* [`outputs/eda/maps/`](outputs/eda/maps): interactive Folium maps of six trips chosen by rule (open them in a browser)
-* [`docs/DATA_QUALITY_NOTES.md`](docs/DATA_QUALITY_NOTES.md): what the numbers mean for the pipeline
-
-## Data cleaning
+**Laptop 2 (UI).** Only the UI packages are needed:
 
 ```bash
-.venv/Scripts/python scripts/run_cleaning.py   # Windows
-.venv/bin/python scripts/run_cleaning.py       # macOS / Linux
-```
-
-It takes about 1 minute and is deterministic. **No rows are deleted**, because every GPS fix
-still needs a prediction. Each fix gets metres (per-trip UTM), a `segment_id` (split at gaps
-> 120 s), a `stop_id` (parked periods) and quality flags. Arcs get a length, a
-`canonical_arc_id` (geometric duplicates) and an `is_candidate` flag. Route-based columns
-(`d_route_m`, `is_far_from_route`, `label_reliable`) are only for training and scoring, and
-are never model inputs. Trips 33 and 54 are excluded from training (most fixes are far from
-their reference route).
-
-* [`outputs/cleaning/CLEANING_REPORT.md`](outputs/cleaning/CLEANING_REPORT.md): what was flagged and excluded
-* [`outputs/cleaning/cleaning_summary.csv`](outputs/cleaning/cleaning_summary.csv): one row per trip
-* Load a cleaned trip: `from pathsnap.cleaning import load_clean_trip`
-
-## Labels, candidates and features (notebook 03)
-
-Run `notebooks/03_features.ipynb` (kernel "PathSnap (.venv)"; needs `data/processed` from `run_cleaning.py`; about 2 min).
-
-```bash
-.venv/Scripts/python -m ipykernel install --user --name pathsnap --display-name "PathSnap (.venv)"   # once
-.venv/Scripts/python -m jupyter lab notebooks/
-```
-
-* `src/pathsnap/labels.py`: per-fix reference arc from an order-respecting DP alignment of the fixes to `.route`
-  (handles U-turns and revisits). Training and scoring only.
-* `src/pathsnap/candidates.py`: arcs within 50 m, at most 16 per fix. This was chosen by a train-only miss-rate sweep
-  (`outputs/features/candidate_sweep.csv`). Train miss rate 0.11 %.
-* `src/pathsnap/features.py`: 27 label-free features per (fix, candidate) row (`FEATURE_COLS`).
-* Outputs: `data/features/*.parquet` (git-ignored) and [`outputs/features/FEATURES_REPORT.md`](outputs/features/FEATURES_REPORT.md).
-
-## Model training and comparison (notebook 04)
-
-Run `notebooks/04_model_training.ipynb` after notebook 03 (about 25 min on CPU). It trains Logistic Regression, KNN,
-Random Forest, LightGBM and an MLP with 5-fold GroupKFold on `trip_id`, refits each on all usable train trips and scores
-it once on student_test. Code: `src/pathsnap/training.py`.
-
-**Where the model code is:** all 5 models are defined in `model_specs()` in
-[`src/pathsnap/training.py`](src/pathsnap/training.py), each under its own `MODEL n` banner:
-
-| # | model | family | code |
-|---|---|---|---|
-| 1 | Logistic Regression | Linear | [`training.py` line 69](src/pathsnap/training.py#L69) |
-| 2 | K-Nearest Neighbours | Instance-based | [`training.py` line 79](src/pathsnap/training.py#L79) |
-| 3 | Random Forest | Ensemble (bagging) | [`training.py` line 91](src/pathsnap/training.py#L91) |
-| 4 | LightGBM | Boosting | [`training.py` line 102](src/pathsnap/training.py#L102) |
-| 5 | MLP | Neural network | [`training.py` line 113](src/pathsnap/training.py#L113) |
-
-The same file has the training loop (`fit_model`, including the MLP's per-epoch loop) and the metrics (`evaluate`).
-The notebook runs the experiment and makes the tables and plots.
-
-* [`outputs/models/MODEL_COMPARISON.md`](outputs/models/MODEL_COMPARISON.md): results tables and figures
-* `outputs/models/`: `model_comparison.csv`, `per_fold.csv`, `configs.json` (all settings and the seed), `experiment_log.jsonl`,
-  `mlp_history.csv`, `confusion_matrices.json`, `figures/`
-* `models/*.joblib`: fitted models. Files over 50 MB are git-ignored, so regenerate them with the notebook.
-
-## Bayesian hyperparameter optimisation of LightGBM (notebook 05)
-
-Run `notebooks/05_bayesian_tuning.ipynb` after notebook 04 (about 80 min on CPU).
-
-* Optuna TPE sampler (seed 42) with a MedianPruner. Objective: mean CV Top-1 over the same 5 GroupKFold folds as notebook 04.
-  At most 60 trials or 75 minutes. student_test is scored once, after the search.
-* Code: [`src/pathsnap/tuning.py`](src/pathsnap/tuning.py) holds the search space, objective and study setup.
-* [`outputs/tuning/TUNING_REPORT.md`](outputs/tuning/TUNING_REPORT.md) answers the report questions. Also in `outputs/tuning/`:
-  `trials.csv` (every trial with per-fold scores), `best_params.json`, `search_space.json`, `tuned_vs_untuned.csv`,
-  `per_fold_top1.csv`, `study.db` (the Optuna study) and `figures/`.
-* Model: `models/LightGBM_tuned.joblib`. The untuned `models/LightGBM.joblib` is unchanged.
-
-## Bayesian hyperparameter optimisation of Random Forest (notebook 06)
-
-Run `notebooks/06_bayesian_tuning_rf.ipynb` after notebook 05 (about 80 min on CPU). It uses the same protocol as notebook 05:
-the same folds, the Top-1 objective, TPE (seed 42) and MedianPruner, with at most 40 trials or 75 minutes. Random Forest was
-tuned too because it was the most accurate untuned model, only a few tenths of a point ahead of LightGBM.
-
-* Search space: `RF_SEARCH_SPACE` in [`src/pathsnap/tuning.py`](src/pathsnap/tuning.py).
-* [`outputs/tuning_rf/TUNING_REPORT_RF.md`](outputs/tuning_rf/TUNING_REPORT_RF.md) answers the report questions and compares
-  RF and LightGBM, untuned and tuned (all four models re-timed in one session). Also in `outputs/tuning_rf/`: `trials.csv`,
-  `best_params.json`, `search_space.json`, `rf_lgbm_tuned_vs_untuned.csv`, `per_fold_top1.csv`, `study.db`, `figures/`.
-* Model: `models/RandomForest_tuned.joblib`. The untuned `models/RandomForest.joblib` is unchanged.
-
-
-## Evaluator UI (Streamlit, laptop 2)
-
-The UI talks to the API **only over HTTP**. It never loads the model, the data or any ground truth.
-The request and response format is fixed in [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md)
-(`GET /health`, `GET /trips`, `POST /predict`).
-
-```bash
-# laptop 2: only the UI packages are needed
 python3 -m venv .venv && .venv/bin/python -m pip install -r ui/requirements.txt
 PATHSNAP_API_URL=http://<laptop-1-ip>:8000 .venv/bin/streamlit run ui/app.py
 ```
 
-You can also type the API address in the sidebar. The page shows a connection light, the list of
-trips (click a row), a **Run prediction** button, the metrics computed by the API (Top-1, classifier-only
-Top-1, route continuity) and a Folium map of the raw GPS points and the predicted route, with a legend
-and layer control. The reference route is never sent to the UI.
+Open http://localhost:8501, pick a trip in the sidebar and press **Run prediction**. The page shows the scores
+(Top-1 with HMM, classifier-only Top-1, route continuity) and a map of the raw GPS and the predicted route.
 
-**Testing without the real API:** `ui/mock_api.py` follows the same contract, using the 10
-student_test trips and a nearest-road baseline (no model). The UI shows a "MOCK API" banner while
-it is connected.
+**Network checklist**
+- Start the API with `--host 0.0.0.0`. Otherwise it only accepts connections from laptop 1 itself.
+- Allow inbound TCP 8000 on laptop 1. On Windows (Admin PowerShell):
+  `New-NetFirewallRule -DisplayName "PathSnap API 8000" -Direction Inbound -Protocol TCP -LocalPort 8000 -Action Allow -Profile Any`
+- Put both laptops on the same network. Campus Wi-Fi may block laptop-to-laptop traffic; a hotspot from laptop 1 works.
+- Check from laptop 2: `curl http://<laptop-1-ip>:8000/health`.
 
-```bash
-.venv/bin/python -m uvicorn ui.mock_api:app --host 0.0.0.0 --port 8000   # needs data/processed
-.venv/bin/streamlit run ui/app.py
-```
+The request and response format is fixed in [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md). To build or test the UI
+without the model, run `python -m uvicorn ui.mock_api:app --port 8000`: a nearest-road baseline on student_test, shown
+with a "MOCK API" banner.
 
-## FastAPI backend (laptop 1)
+## Reproducing the results
 
-`api/main.py` runs the full pipeline for one trip per request: raw files → cleaning → candidates and
-features → **tuned Random Forest → HMM/Viterbi** (the frozen final pipeline in `models/hmm_config.json`,
-run by `hmm.predict_trip`) → predicted segment per GPS point → connected route. Then it scores
-the prediction server-side. The pipeline code is in `src/pathsnap/inference.py`. The prediction step gets
-the trip **with its reference route removed**. Only `score_trip` reads the route, after prediction, and
-only the resulting numbers go to the UI.
+Run the steps in order. Every step is deterministic (seed 42) and writes its evidence to `outputs/`.
+The notebooks use the kernel "PathSnap (.venv)":
+`python -m ipykernel install --user --name pathsnap --display-name "PathSnap (.venv)"`.
 
-```bash
-# development (student_test trips, which have answers to check against)
-.venv/bin/python -m uvicorn api.main:app --host 0.0.0.0 --port 8000
+| Step | Run | Time (CPU) | Outputs |
+|---|---|---|---|
+| 1. Dataset exploration | `scripts/run_eda.py` | 3–5 min | [`outputs/eda/EDA_REPORT.md`](outputs/eda/EDA_REPORT.md), tables, figures, Folium maps |
+| 2. Cleaning | `scripts/run_cleaning.py` | ~1 min | `data/processed/`, [`outputs/cleaning/CLEANING_REPORT.md`](outputs/cleaning/CLEANING_REPORT.md) |
+| 3. Labels, candidates, features | `notebooks/03_features.ipynb` | ~2 min | `data/features/`, [`outputs/features/FEATURES_REPORT.md`](outputs/features/FEATURES_REPORT.md) |
+| 4. Train and compare 5 models | `notebooks/04_model_training.ipynb` | ~25 min | [`outputs/models/MODEL_COMPARISON.md`](outputs/models/MODEL_COMPARISON.md), `models/*.joblib` |
+| 5. Tune LightGBM | `notebooks/05_bayesian_tuning.ipynb` | ~80 min | [`outputs/tuning/TUNING_REPORT.md`](outputs/tuning/TUNING_REPORT.md), `models/LightGBM_tuned.joblib` |
+| 6. Tune Random Forest | `notebooks/06_bayesian_tuning_rf.ipynb` | ~80 min | [`outputs/tuning_rf/TUNING_REPORT_RF.md`](outputs/tuning_rf/TUNING_REPORT_RF.md), `models/RandomForest_tuned.joblib` |
+| 7. HMM + Viterbi | `notebooks/07_hmm_viterbi.ipynb` | ~40 min | [`outputs/hmm/HMM_REPORT.md`](outputs/hmm/HMM_REPORT.md), `models/hmm_config.json` |
+| 8. Final evaluator run | `notebooks/08_evaluator_test.ipynb` | a few min | [`outputs/evaluator_results/EVALUATOR_TEST_REPORT.md`](outputs/evaluator_results/EVALUATOR_TEST_REPORT.md) |
 
-# demo day on laptop 1: copy the evaluator_test/ folder into the repo root first (it is git-ignored)
-PATHSNAP_TRIPS_DIR=evaluator_test .venv/bin/python -m uvicorn api.main:app --host 0.0.0.0 --port 8000
-# Windows (PowerShell):  $env:PATHSNAP_TRIPS_DIR="evaluator_test"; .venv/Scripts/python -m uvicorn api.main:app --host 0.0.0.0 --port 8000
-```
+Raw data is read from `Student folder/` by default; set `PATHSNAP_DATA` to use another folder. Notebook 08 looks for
+`evaluator_test/` in the repo root, or wherever `PATHSNAP_EVAL_ROOT` points.
 
-`--host 0.0.0.0` lets laptop 2 connect. Allow port 8000 through laptop 1's firewall. Every request is
-logged in the console with step timings and scores (the "API logs" the evaluators ask to see).
+## Details
 
-* **Model:** RandomForest_tuned + HMM by default. `PATHSNAP_CLASSIFIER=LightGBM_tuned` switches to tuned
-  LightGBM with its own tuned decoder parameters (both are in `models/hmm_config.json`).
-* **Check (student_test, this Mac):** Top-1 0.9634 with HMM vs 0.9005 classifier-only over 19,157 fixes.
-  notebook 07 reports 0.9523 / 0.8992. The gap is the known rank-tie issue (results vary slightly between
-  machines); trip 00000052 matches exactly.
-* **macOS:** LightGBM needs OpenMP: `brew install libomp`.
+<details>
+<summary><b>Dataset and cleaning</b></summary>
 
-## HMM + Viterbi route reconstruction (notebook 07)
+- Each trip has four header-less files. `.track` holds lon, lat, t. `.nodes` holds lon, lat. `.arcs` holds from and
+  to node ids. `.route` holds the reference arc ids in driving order. Each trip has **its own** road network.
+- **0 malformed rows**, 0 out-of-range coordinates, and timestamps always increase. 96.7% of steps are 1 s, but 30
+  trips have gaps over 30 s (the longest is 42.5 h).
+- The trips span 25 UTM zones worldwide. Median GPS-to-road distance is 5 m.
+- Problems found:
+  - parked GPS jitter (trip 54 is parked 79% of the time)
+  - speed glitches (151 steps over 70 m/s, all still on the road)
+  - imperfect labels: 14 route breaks, 54 U-turns and 322 revisits
+- Trips 33 and 54 are excluded from training, because most of their fixes are more than 50 m from their own route.
+- Interpretation and decisions: [`docs/DATA_QUALITY_NOTES.md`](docs/DATA_QUALITY_NOTES.md).
+</details>
 
-Run `notebooks/07_hmm_viterbi.ipynb` after notebooks 05 and 06 (about 40 min on CPU, most of it nested CV). It decodes each trip with an HMM
-whose hidden states are the candidate arcs of each GPS fix:
+<details>
+<summary><b>Labels, candidates and features</b></summary>
 
-* **Emission:** log of the tuned classifier's probability (with a floor), optionally plus a Gaussian distance term.
-* **Transition:** driving distance along directed arcs (distance-bounded Dijkstra, cached per trip) compared with the
-  straight-line GPS distance, plus penalties for U-turns, arc changes during stops and impossible speeds. "No path" gets a
-  large finite cost, so decoding never breaks.
-* **Chains** restart at GPS gaps > 120 s; fixes with no candidate within 50 m are carried over and flagged.
-* Decoder parameters are tuned with Optuna TPE on **train out-of-fold probabilities only**, inside nested CV for the
-  reported CV numbers. student_test is decoded once at the end.
+- **Labels:** an order-respecting DP alignment of the fixes to the `.route` sequence, which handles U-turns and revisits.
+  Used for training and scoring only.
+- **Candidates:** radius 50 m and K = 16, chosen by a train-only miss-rate sweep. Train miss rate 0.11%, student-test 0.16%.
+- **Features:** 27, listed in `FEATURE_COLS` in [`features.py`](src/pathsnap/features.py). Picking the nearest arc alone
+  scores 51–55% Top-1; the heading and window-consistency features carry most of the gain.
+</details>
 
-Code: [`src/pathsnap/hmm.py`](src/pathsnap/hmm.py) (the recurrence is written out in its docstring) and
-[`src/pathsnap/maps.py`](src/pathsnap/maps.py). Results: [`outputs/hmm/HMM_REPORT.md`](outputs/hmm/HMM_REPORT.md), which answers the
-report questions, plus CSVs, `figures/` and Folium maps in `outputs/hmm/maps/`. The final classifier and decoder parameters
-are in `models/hmm_config.json`.
+<details>
+<summary><b>Models (5 families)</b></summary>
 
-For the API, one trip is processed from its raw files (only `.track`, `.nodes`, `.arcs`; the `.route` file is never read):
+All five are defined in `model_specs()` in [`src/pathsnap/training.py`](src/pathsnap/training.py). Cross-validation is
+5-fold GroupKFold by trip.
 
-```python
-import json, joblib
-from pathsnap import hmm
-cfg = json.load(open("models/hmm_config.json"))
-model = joblib.load(cfg["classifier_file"])
-out = hmm.predict_trip("student_test", "00000000", model, cfg["decoder_params"])
-out["fixes"]   # per fix: lon, lat, t, pred_arc_classifier, pred_arc_hmm, carried_over
-out["path"]    # connected pieces of arcs with [lon, lat] coordinates, for the map
-```
+| # | Model | Family | Code | CV Top-1 (untuned) | Student-test Top-1 |
+|---|---|---|---|---|---|
+| 1 | Logistic Regression | Linear | [line 69](src/pathsnap/training.py#L69) | 0.8778 | 0.8772 |
+| 2 | K-Nearest Neighbours | Instance-based | [line 79](src/pathsnap/training.py#L79) | 0.8733 | 0.8779 |
+| 3 | Random Forest | Ensemble (bagging) | [line 91](src/pathsnap/training.py#L91) | **0.8871** | **0.9001** |
+| 4 | LightGBM | Boosting | [line 102](src/pathsnap/training.py#L102) | 0.8851 | 0.8943 |
+| 5 | MLP | Neural network | [line 113](src/pathsnap/training.py#L113) | 0.8793 | 0.8860 |
+</details>
 
-## Final run on the evaluator_test trips (notebook 08)
+<details>
+<summary><b>Bayesian tuning (Optuna TPE)</b></summary>
 
-`notebooks/08_evaluator_test.ipynb` scores the **frozen** pipeline (`models/hmm_config.json`: tuned Random Forest + HMM)
-on the 10 reserved evaluator_test trips. Nothing is chosen or tuned there. Each trip is predicted with
-`hmm.predict_trip` (no `.route`), and the route is read only afterwards, for scoring. The trip folder is git-ignored:
-put it in the repo root or next to the repo as `evaluator_test/evaluator_test/<trip_id>/`, or set `PATHSNAP_EVAL_ROOT`
-to the folder that contains `evaluator_test/`. Results: [`outputs/evaluator_results/EVALUATOR_TEST_REPORT.md`](outputs/evaluator_results/EVALUATOR_TEST_REPORT.md).
+- **Objective:** mean CV Top-1 on the same 5 folds. Seed 42, with a MedianPruner. Student-test was never used during a search.
+- **LightGBM:** 60 trials. CV Top-1 0.8851 → 0.8900. The best settings are a simpler, more regularised model.
+- **Random Forest:** 37 trials. CV Top-1 0.8871 → 0.8894.
+- **HMM decoder:** 60 trials per classifier, on train out-of-fold probabilities. CV numbers are nested.
+- Search spaces: [`tuning.py`](src/pathsnap/tuning.py) and `SEARCH_SPACE` in [`hmm.py`](src/pathsnap/hmm.py).
+</details>
+
+<details>
+<summary><b>HMM / Viterbi</b></summary>
+
+- **Hidden states:** the candidate arcs of each fix. On average 7–9 per fix, at most 16.
+- **Emission:** log max(p, p_floor), plus an optional Gaussian distance term
+  ([`log_emission`](src/pathsnap/hmm.py#L239)).
+- **Transition:** cost = min(|route − gps| / β, no_path_pen) + U-turn, stop and speed penalties. Route distances
+  come from a distance-bounded Dijkstra on directed arcs ([`log_transition`](src/pathsnap/hmm.py#L247)).
+- **Gaps and missing candidates:** a new chain starts at gaps over 120 s. A fix with no candidate is carried over.
+  A missing path gets a large but finite cost, so decoding never breaks.
+- **Ablation:** removing the U-turn penalty costs 4.0 points; the HMM as a whole adds 5.1 points
+  (train out-of-fold).
+- **Final choice:** Random Forest + HMM, because its nested-CV Top-1 (0.9423) beats LightGBM + HMM (0.9359).
+</details>
+
+## Rules followed
+
+- **No leakage.** Splits are by trip. Every choice was made on train cross-validation. The student test was used for
+  comparison. The evaluator trips were scored once, by the frozen pipeline.
+- **Ground truth stays on laptop 1.** Prediction reads only `.track`, `.nodes` and `.arcs`. The route is used only
+  for server-side scoring and never reaches the UI.
+- **Every reported number** comes from files in `outputs/`, produced by the scripts and notebooks above.
+
+## Known limitations
+
+- **Imperfect reference labels.** Route breaks and off-network driving make Top-1 a noisy measure. We report it on
+  all fixes and on label-reliable fixes.
+- **Results vary slightly between computers.** The two directions of a two-way street tie on `dist_rank` and
+  `win_mean_rank`, and the tie is broken by spatial-index order. The fix (equal rank for ties in `rank_within()`)
+  is identified but not applied.
+- **The HMM still breaks about 1 fix for every 5 it corrects**, mostly during stops at junctions.
+
+See section 9 of the [report](docs/4_Report.pdf) for details.
