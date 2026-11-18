@@ -1,7 +1,11 @@
 # PathSnap: GPS Map-Matching
 
 PES University UE24CS352A hackathon. Match noisy GPS trajectories to arcs of a road network.
-
+Team Members :
+1. Harsha K - PES1UG24CS666
+2. Arjun Kangal - PES1UG24CS922
+3. Santosh N - PES1UG24CS615
+4. Sanskar G - PES1UG24CS614
 ## Repository layout
 
 ```
